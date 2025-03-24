@@ -9,6 +9,14 @@ from dotenv import load_dotenv
 load_dotenv()
 
 def check_python():
+    """Verificar la instalación y disponibilidad de Python en el sistema.
+    
+    Esta función comprueba si Python está instalado y accesible en el PATH
+    del sistema, lo cual es esencial para ejecutar la aplicación.
+    
+    Returns:
+        bool: True si Python está instalado y disponible, False en caso contrario
+    """
     try:
         subprocess.run([sys.executable, "--version"], check=True)
         return True
@@ -17,6 +25,14 @@ def check_python():
         return False
 
 def check_docker():
+    """Verificar la instalación y disponibilidad de Docker en el sistema.
+    
+    Docker es necesario para ejecutar Milvus y sus dependencias (etcd, MinIO).
+    Esta función verifica que Docker esté instalado y accesible en el sistema.
+    
+    Returns:
+        bool: True si Docker está instalado y disponible, False en caso contrario
+    """
     try:
         result = subprocess.run(["docker", "--version"], capture_output=True, text=True)
         if result.returncode == 0:
@@ -30,6 +46,17 @@ def check_docker():
         return False
 
 def setup_environment():
+    """Configurar el entorno virtual y las dependencias del proyecto.
+    
+    Esta función realiza las siguientes tareas:
+    1. Crea un entorno virtual si no existe
+    2. Activa el entorno virtual
+    3. Instala todas las dependencias del archivo requirements.txt
+    4. Si falla la instalación en masa, intenta instalar cada dependencia individualmente
+    
+    El entorno virtual aísla las dependencias del proyecto para evitar conflictos
+    con otros proyectos Python en el sistema.
+    """
     print("Setting up virtual environment...")
     if not os.path.exists(".venv"):
         subprocess.run([sys.executable, "-m", "venv", ".venv"], check=True)
@@ -63,6 +90,22 @@ def setup_environment():
                 print(f"Failed to install {dep}")
 
 def start_milvus():
+    """Iniciar y configurar el servidor Milvus y sus dependencias.
+    
+    Milvus es una base de datos vectorial que requiere varios componentes:
+    - etcd: Para gestión de metadatos y configuración
+    - MinIO: Para almacenamiento de datos
+    - Milvus standalone: El servidor principal
+    
+    Esta función maneja:
+    1. Verificación de Docker
+    2. Gestión de contenedores
+    3. Inicialización de servicios
+    4. Verificación de disponibilidad
+    
+    Returns:
+        bool: True si Milvus se inició correctamente, False en caso contrario
+    """
     if not check_docker():
         print("Docker is required to run Milvus. Please install Docker and try again.")
         print("You can download Docker Desktop from: https://www.docker.com/products/docker-desktop")
@@ -76,30 +119,91 @@ def start_milvus():
         return False
     
     print("Starting Milvus...")
-    try:
-        subprocess.run(["docker-compose", "up", "-d"], check=True)
-        print("Waiting for Milvus to start...")
-        
-        # More robust waiting for Milvus to be ready
-        max_attempts = 20
-        for attempt in range(max_attempts):
-            print(f"Checking Milvus availability (attempt {attempt+1}/{max_attempts})...")
-            try:
-                # Try to connect to Milvus
-                from pymilvus import connections
-                connections.connect("default", host="localhost", port="19530")
-                connections.disconnect("default")
-                print("Milvus is ready!")
-                return True
-            except Exception as e:
-                print(f"Milvus not ready yet: {e}")
-                time.sleep(10)  # Wait 10 seconds between attempts
-        
-        print("Milvus failed to start within the expected time. Continuing anyway...")
-        return True  # Return True to continue with the application
-    except subprocess.CalledProcessError as e:
-        print(f"Error starting Milvus: {e}")
-        return False
+    max_restart_attempts = 3
+    for restart_attempt in range(max_restart_attempts):
+        try:
+            # Stop and remove existing containers to ensure clean state
+            print("Stopping any existing Milvus containers...")
+            subprocess.run(["docker-compose", "down"], check=True)
+            time.sleep(5)  # Wait for containers to stop completely
+            
+            # Start the containers
+            print("Starting fresh Milvus containers...")
+            subprocess.run(["docker-compose", "up", "-d"], check=True)
+            print("Milvus containers started")
+            
+            # Wait for containers to be in running state
+            print("Waiting for containers to be ready...")
+            time.sleep(10)  # Initial wait time increased
+            
+            # Check container status
+            result = subprocess.run(
+                ["docker", "ps", "--filter", "name=milvus-standalone", "--format", "{{.Status}}"],
+                capture_output=True, text=True, check=True
+            )
+            
+            if "Up" not in result.stdout:
+                print(f"Container not in 'Up' state. Current status: {result.stdout}")
+                if restart_attempt < max_restart_attempts - 1:
+                    print(f"Retrying... (attempt {restart_attempt + 1}/{max_restart_attempts})")
+                    continue
+                return False
+            
+            # Check container logs for readiness
+            print("Checking Milvus container logs...")
+            subprocess.run(["docker", "logs", "milvus-standalone"], check=False)
+            
+            # More robust waiting for Milvus to be ready
+            max_connection_attempts = 30  # Increased from 20 to 30
+            for attempt in range(max_connection_attempts):
+                print(f"Checking Milvus availability (attempt {attempt+1}/{max_connection_attempts})...")
+                try:
+                    # Try to connect to Milvus with increased timeout
+                    from pymilvus import connections
+                    connections.connect("default", host="localhost", port="19530", timeout=15.0)
+                    
+                    # Test the connection with a simple operation
+                    from pymilvus import utility
+                    collections = utility.list_collections()
+                    print(f"Successfully connected to Milvus. Available collections: {collections}")
+                    
+                    connections.disconnect("default")
+                    print("Milvus is ready!")
+                    return True
+                except Exception as e:
+                    print(f"Milvus not ready yet: {e}")
+                    
+                    # Check container health more frequently
+                    if attempt % 2 == 0:  # Check every 2 attempts instead of 3
+                        try:
+                            result = subprocess.run(
+                                ["docker", "ps", "--filter", "name=milvus-standalone", "--format", "{{.Status}}"],
+                                capture_output=True, text=True, check=True
+                            )
+                            if "Up" not in result.stdout:
+                                print(f"Container status changed: {result.stdout}")
+                                break  # Break inner loop to trigger container restart
+                            print(f"Container status: {result.stdout}")
+                        except Exception as container_error:
+                            print(f"Error checking container status: {container_error}")
+                    
+                    time.sleep(5)
+            
+            if restart_attempt < max_restart_attempts - 1:
+                print("Milvus failed to initialize. Attempting restart...")
+                continue
+            else:
+                print("Milvus failed to start after multiple attempts.")
+                return False
+                
+        except subprocess.CalledProcessError as e:
+            print(f"Error in Milvus startup process: {e}")
+            if restart_attempt < max_restart_attempts - 1:
+                print(f"Retrying... (attempt {restart_attempt + 1}/{max_restart_attempts})")
+                continue
+            return False
+    
+    return False  # Should not reach here, but just in case
 
 def start_backend():
     print("Starting backend server...")
@@ -172,20 +276,21 @@ def start_frontend():
         if os.name == "nt":  # Windows
             # Add more verbose output to debug the issue
             print("Executing: .venv\\Scripts\\streamlit run frontend\\app.py")
+            # Add --server.headless=true to prevent Streamlit from opening browser automatically
             frontend_process = subprocess.Popen(
-                [".venv\\Scripts\\streamlit", "run", "frontend\\app.py"],
+                [".venv\\Scripts\\streamlit", "run", "frontend\\app.py", "--server.headless=true"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )
             # Check if process started successfully
             if frontend_process.poll() is not None:
                 print(f"Frontend process exited immediately with code: {frontend_process.returncode}")
-                stderr = frontend_process.stderr.read().decode('utf-8')
+                stderr = frontend_process.stderr.read().decode('utf-8') if frontend_process and frontend_process.stderr else "No error output available"
                 print(f"Error output: {stderr}")
                 return None
         else:  # Unix/Linux
             frontend_process = subprocess.Popen(
-                [".venv/bin/streamlit", "run", "frontend/app.py"],
+                [".venv/bin/streamlit", "run", "frontend/app.py", "--server.headless=true"],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE
             )

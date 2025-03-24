@@ -67,3 +67,34 @@ sintomas_diagnostico_ai_app/
 - **Embeddings y RAG**: FAISS
 - **Modelo de lenguaje**: DeepSeek-R1 (HuggingFace)
 
+
+
+
+
+
+**Ejemplo para QA
+
+El síndrome de Guillain-Barré-Strohl (SLGBS), también conocido como síndrome de Guillain-Barré (GB), es una enfermedad que afecta el sistema nervioso periférico. 
+Síntomas 
+
+Hormigueo en los pies, las piernas, los brazos o la cara
+Debilidad muscular que progresa a parálisis
+Dificultad para caminar o subir escaleras
+Dificultad para mover los ojos
+Dolor fuerte
+Problemas para controlar la vejiga o los intestinos
+Frecuencia cardíaca acelerada
+Presión arterial alta o baja
+Problemas para respirar
+
+Tratamiento Inmunoglobulinas por vía intravenosa (IgIV), Plasmaféresis, Fisioterapia y rehabilitación. 
+
+Pronóstico 
+El pronóstico varía según el tipo de SGB y puede ir desde la recuperación completa hasta la incapacidad de caminar
+
+Factores de riesgo
+Se desconoce la causa exacta, pero suele ocurrir después de una infección viral respiratoria o gastrointestinal 
+También se han descrito casos de SGB ocurridos después de una vacunación o una intervención quirúrgica 
+
+Frecuencia 
+Se estima que una persona de cada 100,000 la presenta

@@ -168,12 +168,15 @@ def main():
         
         # Create an IVF_FLAT index for the embeddings
         print("Creating index...")
+        # After creating the collection and before inserting data
+        # Make sure to create the index
         index_params = {
             "metric_type": "L2",
             "index_type": "IVF_FLAT",
-            "params": {"nlist": 128}
+            "params": {"nlist": 1024}
         }
-        collection.create_index("embedding", index_params)
+        collection.create_index(field_name="embedding", index_params=index_params)
+        print("Index created successfully")
         
         # Import data to Milvus
         print("Importing data to Milvus...")

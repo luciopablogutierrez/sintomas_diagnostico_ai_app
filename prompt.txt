@@ -1,0 +1,194 @@
+# Prompt para Creación de Proyecto: Chat Médico con Diagnóstico Predictivo
+
+## Objetivo Principal
+Crear una aplicación de chat intuitiva para doctores que ingrese síntomas y prediga diagnósticos basados en datos de ORPHAnomenclature (importados a Milvus), usando el stack especificado con máxima eficiencia.
+
+## Stack Tecnológico Específico
+```
+Frontend: Next.js + Streamlit (UI)
+Embeddings: FAISS (índices eficientes)
+Backend/Model: LangChain (orquestación)
+Vector DB: Milvus (almacenamiento/retrieval)
+LLM: deepseek-ai/DeepSeek-R1 (HuggingFace)
+```
+
+## Requerimientos Técnicos Detallados
+
+1. **Pre-procesamiento de Datos**:
+```python
+# requirements.txt
+# Procesamiento XML y datos
+lxml==4.9.4
+xmltodict==0.13.0
+python-dotenv==1.0.0
+# Entorno virtual
+virtualenv==20.25.1
+# Backend/Embeddings
+langchain==0.1.16
+faiss-cpu==1.8.0
+pymilvus==2.4.0
+# Modelo LLM
+transformers==4.40.0
+torch==2.2.1
+accelerate==0.29.3
+# Frontend
+streamlit==1.33.0
+next==14.1.0
+react-hot-toast==2.4.1
+```
+
+2. **Flujo de Alta Eficiencia**:
+```
+1. Cargar XML → Parsear → Chunking (512 tokens)
+2. Generar embeddings (DeepSeek-R1) → Store en Milvus (FAISS index)
+3. UI: Streamlit para admin, Next.js para interfaz doctor
+4. RAG Pipeline:
+   - Input síntomas → Embedding → Similarity search (FAISS)
+   - Top 5 resultados → Prompt engineering → DeepSeek-R1
+   - Formatear respuesta (Markdown + evidencias)
+```
+
+## Estructura de Directorios Óptima
+```
+medichat/
+├── data/                   # XML y procesados
+├── backend/
+│   ├── etl/                # Scripts ETL
+│   ├── milvus/             # Conexión DB
+│   ├── model/              # LLM wrappers
+│   └── rag/                # Pipeline RAG
+├── frontend/
+│   ├── next-app/           # Next.js main
+│   └── streamlit-admin/    # Admin interface
+└── requirements.txt         # Entorno virtual
+```
+
+## Implementación Rápida (Key Scripts)
+
+1. **ETL Ultra-Eficiente** (backend/etl/xml_to_milvus.py):
+```python
+from lxml import etree
+from pymilvus import connections, Collection
+import xmltodict
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+def process_xml():
+    # Configuración Milvus
+    connections.connect("default", host="localhost", port="19530")
+    
+    # Parseo rápido con lxml
+    tree = etree.parse('ORPHAnomenclature_es_2024.xml')
+    xml_data = xmltodict.parse(etree.tostring(tree))
+    
+    # Chunking optimizado
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=512,
+        chunk_overlap=50,
+        length_function=len,
+        is_separator_regex=False
+    )
+    
+    # Procesamiento paralelizable
+    chunks = splitter.create_documents([str(xml_data)])
+    
+    # Batch insert a Milvus
+    collection = Collection("orphan_data")
+    collection.insert([{"text": chunk.page_content} for chunk in chunks])
+```
+
+2. **Backend RAG Optimizado** (backend/rag/pipeline.py):
+```python
+from langchain.llms import HuggingFacePipeline
+from langchain.embeddings import HuggingFaceEmbeddings
+from langchain.vectorstores import Milvus
+from transformers import AutoModelForCausalLM, AutoTokenizer
+import torch
+
+def setup_rag():
+    # Modelo ligero en GPU si disponible
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    # Cargar solo lo necesario
+    tokenizer = AutoTokenizer.from_pretrained("deepseek-ai/DeepSeek-R1")
+    model = AutoModelForCausalLM.from_pretrained(
+        "deepseek-ai/DeepSeek-R1",
+        torch_dtype=torch.float16 if device == "cuda" else torch.float32
+    ).to(device)
+    
+    # Pipeline eficiente
+    llm = HuggingFacePipeline.from_model_id(
+        model_id="deepseek-ai/DeepSeek-R1",
+        task="text-generation",
+        device=device,
+        model_kwargs={"temperature": 0.2, "max_length": 512}
+    )
+    
+    # Embeddings con cache
+    embeddings = HuggingFaceEmbeddings(
+        model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    )
+    
+    # Conexión reusable a Milvus
+    vector_db = Milvus(
+        embedding_function=embeddings,
+        connection_args={"host": "localhost", "port": "19530"},
+        collection_name="orphan_data"
+    )
+    
+    return llm, vector_db
+```
+
+3. **Frontend Next.js Optimizado** (frontend/next-app/pages/api/chat.js):
+```javascript
+export default async function handler(req, res) {
+  if (req.method === 'POST') {
+    try {
+      // Conexión directa sin middleware adicional
+      const response = await fetch('http://localhost:8000/predict', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({symptoms: req.body.symptoms}),
+        cache: 'no-store' // Para datos siempre frescos
+      });
+      
+      const data = await response.json();
+      res.status(200).json(data);
+    } catch (error) {
+      res.status(500).json({error: 'Prediction failed'});
+    }
+  }
+}
+```
+
+## Recomendaciones de Performance Críticas
+
+1. **Caching Estratégico**:
+   - Cachear embeddings generados en Redis/Memcached
+   - Pre-calcular embeddings para términos médicos comunes
+
+2. **Optimización Milvus**:
+   ```python
+   # Configuración índice FAISS en Milvus
+   index_params = {
+       "metric_type": "L2",
+       "index_type": "IVF_FLAT",
+       "params": {"nlist": 4096}
+   }
+   collection.create_index("embedding", index_params)
+   ```
+
+3. **Load Balancing**:
+   - Usar batching en las peticiones al LLM
+   - Implementar async/await en el frontend
+
+4. **Compresión**:
+   - Usar `zlib` para comprimir respuestas largas
+   - Habilitar gzip en el servidor
+
+## Checklist Pre-lanzamiento
+- [ ] Entorno virtual creado (`python -m venv medichat-env`)
+- [ ] Todas las dependencias en requirements.txt
+- [ ] Milvus corriendo en puerto 19530
+- [ ] XML importado y vectorizado
+- [ ] Endpoints probados con Postman
+- [ ] UI con lazy loading implementado
