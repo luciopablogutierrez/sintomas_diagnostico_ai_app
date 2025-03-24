@@ -1,6 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from langchain.llms import HuggingFaceHub
+from langchain_community.llms import HuggingFaceHub
 from langchain.chains import LLMChain
 from langchain.prompts import PromptTemplate
 from pymilvus import connections, Collection
@@ -12,31 +12,62 @@ load_dotenv()
 
 app = FastAPI()
 
-# Connect to Milvus
-connections.connect(
-    alias="default", 
-    host=os.getenv("MILVUS_HOST", "localhost"),
-    port=os.getenv("MILVUS_PORT", "19530")
-)
+# Initialize global variables
+embedding_model = None
+collection = None
+llm = None
 
-# Load the disease collection
-collection = Collection("diseases")
-collection.load()
+# Add a health check endpoint
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
 
-# Initialize the embedding model
-embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+# Initialize components
+def initialize_components():
+    global embedding_model, collection, llm
+    
+    try:
+        print("Connecting to Milvus...")
+        connections.connect(
+            alias="default", 
+            host=os.getenv("MILVUS_HOST", "localhost"),
+            port=os.getenv("MILVUS_PORT", "19530")
+        )
+        
+        print("Loading disease collection...")
+        collection = Collection("diseases")
+        collection.load()
+        
+        print("Initializing embedding model...")
+        embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
+        
+        print("Initializing language model...")
+        llm = HuggingFaceHub(
+            repo_id="deepseek-ai/DeepSeek-R1",
+            model_kwargs={"temperature": 0.5, "max_length": 512},
+            huggingfacehub_api_token=os.getenv("HUGGINGFACE_API_TOKEN")
+        )
+        
+        print("All components initialized successfully")
+        return True
+    except Exception as e:
+        print(f"Error during initialization: {e}")
+        return False
 
-# Initialize the LLM
-llm = HuggingFaceHub(
-    repo_id="deepseek-ai/DeepSeek-R1",
-    model_kwargs={"temperature": 0.5, "max_length": 512}
-)
+# Initialize on startup
+initialize_components()
 
 class ChatRequest(BaseModel):
     symptoms: str
 
 @app.post("/diagnose")
 async def diagnose(request: ChatRequest):
+    # Check if components are initialized
+    if embedding_model is None or collection is None or llm is None:
+        # Try to initialize again
+        if not initialize_components():
+            raise HTTPException(status_code=503, detail="Service components not initialized")
+    
     try:
         # Generate embedding for the symptoms
         symptoms_embedding = embedding_model.encode(request.symptoms)
@@ -100,6 +131,7 @@ async def diagnose(request: ChatRequest):
             "matches": matches
         }
     except Exception as e:
+        print(f"Error in diagnose endpoint: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":

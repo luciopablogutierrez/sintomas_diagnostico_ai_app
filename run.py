@@ -3,6 +3,7 @@ import subprocess
 import time
 import sys
 import webbrowser
+import requests  # Add this import
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -78,8 +79,24 @@ def start_milvus():
     try:
         subprocess.run(["docker-compose", "up", "-d"], check=True)
         print("Waiting for Milvus to start...")
-        time.sleep(30)  # Wait for Milvus to initialize
-        return True
+        
+        # More robust waiting for Milvus to be ready
+        max_attempts = 20
+        for attempt in range(max_attempts):
+            print(f"Checking Milvus availability (attempt {attempt+1}/{max_attempts})...")
+            try:
+                # Try to connect to Milvus
+                from pymilvus import connections
+                connections.connect("default", host="localhost", port="19530")
+                connections.disconnect("default")
+                print("Milvus is ready!")
+                return True
+            except Exception as e:
+                print(f"Milvus not ready yet: {e}")
+                time.sleep(10)  # Wait 10 seconds between attempts
+        
+        print("Milvus failed to start within the expected time. Continuing anyway...")
+        return True  # Return True to continue with the application
     except subprocess.CalledProcessError as e:
         print(f"Error starting Milvus: {e}")
         return False
@@ -96,7 +113,7 @@ def start_backend():
         # Verify backend dependencies
         print("Checking backend dependencies...")
         subprocess.run(
-            [".venv\\Scripts\\pip", "install", "-r", "backend\\requirements.txt"],
+            [".venv\\Scripts\\pip", "install", "-r", "requirements.txt"],
             check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE
@@ -109,7 +126,7 @@ def start_backend():
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             bufsize=1,
-            universal_newlines=True
+            universal_newlines=True  # This ensures text mode
         )
 
         # Monitor startup in real-time
@@ -119,7 +136,7 @@ def start_backend():
             # Check process status
             if backend_process.poll() is not None:
                 print(f"Backend process exited with code: {backend_process.returncode}")
-                stderr = backend_process.stderr.read()
+                stderr = backend_process.stderr.read()  # Already text due to universal_newlines=True
                 print(f"Error output: {stderr}")
                 return None
             
@@ -247,8 +264,8 @@ def main():
         # Check if processes are still running
         if backend_process.poll() is not None:
             print(f"Backend process exited with code: {backend_process.returncode}")
-            stderr = backend_process.stderr.read().decode('utf-8')
-            stdout = backend_process.stdout.read().decode('utf-8')
+            stderr = backend_process.stderr.read()  # Already text due to universal_newlines=True
+            stdout = backend_process.stdout.read()  # Already text due to universal_newlines=True
             print(f"Backend error output: {stderr}")
             print(f"Backend standard output: {stdout}")
             frontend_process.terminate()
@@ -257,20 +274,26 @@ def main():
             
         if frontend_process.poll() is not None:
             print(f"Frontend process exited with code: {frontend_process.returncode}")
-            stderr = frontend_process.stderr.read().decode('utf-8')
-            stdout = frontend_process.stdout.read().decode('utf-8')
+            stderr = frontend_process.stderr.read()  # Already text due to universal_newlines=True
+            stdout = frontend_process.stdout.read()  # Already text due to universal_newlines=True
             print(f"Frontend error output: {stderr}")
             print(f"Frontend standard output: {stdout}")
             backend_process.terminate()
             subprocess.run(["docker-compose", "down"], check=True)
             return
         
-        # Open browser
-        webbrowser.open("http://localhost:8501")
-        
+        # Open browser - only once
         print("\nApplication is running!")
         print("Frontend: http://localhost:8501")
         print("Backend: http://localhost:8000")
+        print("\nOpening browser...")
+        try:
+            # Use a more controlled browser opening approach
+            webbrowser.get().open("http://localhost:8501", new=1)
+        except Exception as e:
+            print(f"Could not automatically open browser: {e}")
+            print("Please manually navigate to http://localhost:8501")
+        
         print("\nPress Ctrl+C to stop the application")
         
         # Keep the script running and monitor processes
@@ -281,13 +304,13 @@ def main():
                 # Check if processes are still running
                 if backend_process.poll() is not None:
                     print(f"Backend process exited with code: {backend_process.returncode}")
-                    stderr = backend_process.stderr.read().decode('utf-8')
+                    stderr = backend_process.stderr.read()  # Already text due to universal_newlines=True
                     print(f"Backend error output: {stderr}")
                     break
                     
                 if frontend_process.poll() is not None:
                     print(f"Frontend process exited with code: {frontend_process.returncode}")
-                    stderr = frontend_process.stderr.read().decode('utf-8')
+                    stderr = frontend_process.stderr.read()  # Already text due to universal_newlines=True
                     print(f"Frontend error output: {stderr}")
                     break
                     
