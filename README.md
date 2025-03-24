@@ -1,6 +1,17 @@
-# Asistente de Diagnóstico Médico
+# Asistente de Diagnóstico Médico (Chat Médico con Diagnóstico Predictivo)
 
-Esta aplicación proporciona una interfaz de chat intuitiva para médicos, donde pueden ingresar síntomas y recibir predicciones de diagnósticos basadas en la nomenclatura ORPHA de enfermedades raras.
+## Objetivo Principal
+
+Crear una aplicación de chat intuitiva para doctores que ingrese síntomas y prediga diagnósticos basados en datos de ORPHAnomenclature (importados a Milvus), usando el stack especificado con máxima eficiencia.
+
+## Stack Tecnológico Específico
+```
+Frontend: Next.js + Streamlit (UI)
+Embeddings: FAISS (índices eficientes)
+Backend/Model: LangChain (orquestación)
+Vector DB: Milvus (almacenamiento/retrieval)
+LLM: deepseek-ai/DeepSeek-R1 (HuggingFace)
+```
 
 ## Requisitos previos
 
@@ -12,9 +23,10 @@ Esta aplicación proporciona una interfaz de chat intuitiva para médicos, donde
 
 1. Clone este repositorio:
 
+```bash
 git clone
 cd sintomas_diagnostico_ai_app
-
+```
 
 2. Configure las variables de entorno (opcional):
 - Copie el archivo `.env.example` a `.env`
@@ -24,8 +36,9 @@ cd sintomas_diagnostico_ai_app
 
 Para iniciar la aplicación completa, simplemente ejecute:
 
+```bash
 python run.py
-
+```
 
 Este script realizará automáticamente las siguientes acciones:
 - Configurar el entorno virtual
@@ -38,19 +51,44 @@ Este script realizará automáticamente las siguientes acciones:
 
 ## Estructura del proyecto
 
+```
 sintomas_diagnostico_ai_app/
-├── .env                  # Variables de entorno
-├── requirements.txt      # Dependencias de Python
-├── docker-compose.yml    # Configuración de Docker para Milvus
-├── run.py                # Script para ejecutar la aplicación
-├── README.md             # Este archivo
+├── .env                      # Variables de entorno
+├── .env.example             # Ejemplo de variables de entorno
+├── requirements.txt         # Dependencias de Python
+├── docker-compose.yml       # Configuración de Docker para Milvus
+├── run.py                   # Script para ejecutar la aplicación
+├── README.md                # Este archivo
+├── ORPHAnomenclature_es_2024.xml  # Datos de enfermedades raras
 ├── scripts/
-│   └── data_importer.py  # Script para importar datos XML a Milvus
+│   └── data_importer.py     # Script para importar datos XML a Milvus
 ├── backend/
-│   └── main.py           # API FastAPI para el backend
+│   ├── etl/                 # Scripts ETL
+│   │   └── xml_to_milvus.py # Procesamiento de XML a Milvus
+│   ├── milvus/              # Conexión a la base de datos
+│   │   └── connection.py    # Configuración de conexión a Milvus
+│   ├── rag/                 # Pipeline RAG
+│   │   └── pipeline.py      # Configuración del pipeline RAG
+│   ├── main.py              # API FastAPI para el backend
+│   └── requirements.txt     # Dependencias específicas del backend
 └── frontend/
-└── app.py            # Interfaz de usuario con Streamlit
+    ├── app.py               # Interfaz principal
+    ├── next-app/            # Aplicación Next.js
+    │   └── pages/           # Páginas de la aplicación Next.js
+    └── streamlit-admin/     # Interfaz de administración
+        └── app.py           # Aplicación Streamlit para administración
+```
 
+## Flujo de Procesamiento
+
+1. **Procesamiento de Datos**:
+   - Carga del XML → Parseo → Chunking (512 tokens)
+   - Generación de embeddings (DeepSeek-R1) → Almacenamiento en Milvus (índice FAISS)
+
+2. **Pipeline RAG**:
+   - Input de síntomas → Embedding → Búsqueda por similitud (FAISS)
+   - Top 5 resultados → Prompt engineering → DeepSeek-R1
+   - Formateo de respuesta (Markdown + evidencias)
 
 ## Uso
 
@@ -59,13 +97,28 @@ sintomas_diagnostico_ai_app/
 3. El sistema analizará los síntomas y proporcionará posibles diagnósticos basados en la base de datos ORPHA
 4. Los resultados incluirán diagnósticos probables, junto con información adicional sobre cada enfermedad
 
+## Optimizaciones de Rendimiento
+
+1. **Caching Estratégico**:
+   - Caché de embeddings generados
+   - Pre-cálculo de embeddings para términos médicos comunes
+
+2. **Optimización de Milvus**:
+   - Configuración de índices FAISS optimizados
+   - Parámetros ajustados para búsqueda eficiente
+
+3. **Load Balancing**:
+   - Procesamiento por lotes en peticiones al LLM
+   - Implementación de async/await en el frontend
+
 ## Tecnologías utilizadas
 
-- **Frontend**: Streamlit
+- **Frontend**: Next.js, Streamlit
 - **Backend**: FastAPI, LangChain
 - **Base de datos vectorial**: Milvus
 - **Embeddings y RAG**: FAISS
 - **Modelo de lenguaje**: DeepSeek-R1 (HuggingFace)
+- **Procesamiento de datos**: lxml, xmltodict
 
 
 

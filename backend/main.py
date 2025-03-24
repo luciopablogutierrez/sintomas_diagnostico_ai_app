@@ -1,17 +1,23 @@
-# Install FastAPI if not installed: pip install fastapi
-try:
-    from fastapi import FastAPI, HTTPException
-except ImportError:
-    raise ImportError("FastAPI is not installed. Please run: pip install fastapi")
+from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from langchain_community.llms import HuggingFaceHub
-from langchain.chains import LLMChain
-from langchain.prompts import PromptTemplate
 from pymilvus import connections, Collection
 from sentence_transformers import SentenceTransformer
 import os
 import time
+import logging
+import sys
 from dotenv import load_dotenv
+
+# Configurar logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+logger = logging.getLogger("medichat")
 
 load_dotenv()
 
@@ -52,19 +58,31 @@ def initialize_components():
         max_attempts = 5
         for attempt in range(max_attempts):
             try:
+                try:
+                    connections.disconnect("default")
+                except:
+                    pass
                 connections.connect(
-                    alias="default", 
+                    alias="default",
                     host=os.getenv("MILVUS_HOST", "localhost"),
                     port=os.getenv("MILVUS_PORT", "19530"),
-                    timeout=10.0
+                    timeout=10.0,
+                    keepalive_time=30,
+                    keepalive=True
                 )
                 break
             except Exception as e:
                 print(f"Milvus connection attempt {attempt+1}/{max_attempts} failed: {e}")
+                if "server ID mismatch" in str(e):
+                    print("Resetting connection due to server ID mismatch...")
+                    try:
+                        connections.remove_connection("default")
+                    except:
+                        pass
                 if attempt < max_attempts - 1:
-                    time.sleep(5)
+                    time.sleep(5 + attempt*2)
                 else:
-                    raise
+                    raise RuntimeError("Failed to establish stable connection to Milvus after retries")
         
         print("Loading disease collection...")
         try:
@@ -139,6 +157,10 @@ threading.Thread(target=initialize_components, daemon=True).start()
 class ChatRequest(BaseModel):
     symptoms: str
 
+# Importar módulos necesarios para el pipeline RAG
+from backend.rag.pipeline import generate_diagnosis, search_similar_diseases
+import time
+
 @app.post("/diagnose")
 async def diagnose(request: ChatRequest):
     # Check if components are initialized
@@ -147,71 +169,80 @@ async def diagnose(request: ChatRequest):
             raise HTTPException(status_code=500, detail=f"Initialization failed: {str(initialization_error)}")
         raise HTTPException(status_code=503, detail="Service components not initialized")
     
+    # Registrar estadísticas
+    start_time = time.time()
+    
     try:
-        # Add except clause to handle potential errors
-        # Generate embedding for the symptoms
-        # Check if embedding_model is initialized before using it
-        if embedding_model is None:
-            raise HTTPException(status_code=500, detail="Embedding model not initialized")
-        symptoms_embedding = embedding_model.encode(request.symptoms)
+        # Importar módulos de RAG
+        from backend.rag.pipeline import setup_rag
+        from backend.milvus.connection import get_collection
         
-        # Search for similar diseases in Milvus
-        search_params = {
-            "metric_type": "L2",
-            "params": {"nprobe": 10}
-        }
+        # Verificar componentes
+        if llm is None or embeddings is None or vector_db is None:
+            logger.error("Componentes RAG no inicializados")
+            raise HTTPException(status_code=500, detail="Componentes RAG no inicializados")
         
-        results = collection.search(
-            data=[symptoms_embedding],
-            anns_field="embedding",
-            param=search_params,
-            limit=5,
-            output_fields=["code", "name", "symptoms", "description"]
-        )
+        logger.info(f"Procesando síntomas: {request.symptoms}")
         
-        # Extract the top matches
+        # Buscar enfermedades similares
+        similar_diseases = search_similar_diseases(vector_db, embeddings, request.symptoms, limit=5)
+        
+        # Preparar contexto para el LLM
+        context = "\n\n".join([doc.page_content for doc in similar_diseases])
+        
+        # Generar diagnóstico
+        diagnosis = generate_diagnosis(llm, request.symptoms, context)
+        
+        # Extraer información de las enfermedades similares
         matches = []
-        hits = results[0]  # Access first (and only) result since we're searching with a single query
-        for hit in hits:
-            matches.append({
-                "code": hit.entity.get('code'),
-                "name": hit.entity.get('name'),
-                "symptoms": hit.entity.get('symptoms'),
-                "description": hit.entity.get('description'),
-                "similarity": hit.distance
-            })
-        
-        # Create a prompt for the LLM
-        context = "\n".join([
-            f"Enfermedad: {match['name']}\n"
-            f"Síntomas: {match['symptoms']}\n"
-            f"Descripción: {match['description']}\n"
-            for match in matches
-        ])
-        
-        prompt_template = PromptTemplate(
-            input_variables=["symptoms", "context"],
-            template="""
-            Eres un asistente médico especializado en diagnósticos. 
+        for i, doc in enumerate(similar_diseases):
+            # Extraer información del documento
+            text = doc.page_content
+            metadata = doc.metadata if hasattr(doc, 'metadata') else {}
             
-            El paciente presenta los siguientes síntomas:
-            {symptoms}
+            # Crear objeto de coincidencia
+            match = {
+                "id": i + 1,
+                "text": text,
+                "similarity": metadata.get('score', 100 - i*10)  # Valor aproximado si no hay score real
+            }
             
-            Basado en la base de datos de enfermedades raras ORPHA, estas son las posibles coincidencias:
-            {context}
+            # Intentar extraer más información si está disponible
+            if 'code' in metadata:
+                match['code'] = metadata['code']
+            if 'name' in metadata:
+                match['name'] = metadata['name']
             
-            Por favor, proporciona un análisis detallado de los posibles diagnósticos, ordenados por probabilidad.
-            Para cada diagnóstico, explica por qué los síntomas coinciden y qué pruebas adicionales podrían ser necesarias.
-            """
-        )
+            matches.append(match)
         
-        # Create and run the chain
-        chain = LLMChain(llm=llm, prompt=prompt_template)
-        response = chain.run(symptoms=request.symptoms, context=context)
+        # Registrar estadísticas
+        end_time = time.time()
+        response_time = end_time - start_time
         
+        # Actualizar estadísticas globales
+        global query_stats
+        query_stats["total_queries"] += 1
+        query_stats["query_history"].append({
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "symptoms": request.symptoms,
+            "response_time": response_time
+        })
+        
+        # Limitar historial a las últimas 100 consultas
+        if len(query_stats["query_history"]) > 100:
+            query_stats["query_history"] = query_stats["query_history"][-100:]
+        
+        # Calcular tiempo promedio de respuesta
+        total_times = sum(q["response_time"] for q in query_stats["query_history"])
+        query_stats["avg_response_time"] = total_times / len(query_stats["query_history"])
+        
+        logger.info(f"Diagnóstico generado en {response_time:.2f} segundos")
+        
+        # Devolver respuesta formateada
         return {
-            "diagnosis": response,
-            "matches": matches
+            "diagnosis": diagnosis,
+            "matches": matches,
+            "response_time": response_time
         }
     except Exception as e:
         print(f"Error in diagnose endpoint: {e}")

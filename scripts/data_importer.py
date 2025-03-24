@@ -67,6 +67,15 @@ def main():
         print("Checking and installing required dependencies...")
         import importlib
         
+        # Check for chardet
+        try:
+            importlib.import_module('chardet')
+        except ImportError:
+            install_package('chardet')
+        
+        # Import chardet after ensuring it's installed
+        import chardet
+        
         # Check for pymilvus
         try:
             importlib.import_module('pymilvus')
@@ -303,7 +312,77 @@ def process_xml_to_local_json(xml_path):
     """Process XML and save to local JSON file as fallback when Milvus is unavailable"""
     print("Processing XML to local JSON file...")
     
-    diseases = process_xml(xml_path)
+    # Import chardet here to ensure it's available in this function
+    import chardet
+    
+    # Detect file encoding with multiple fallbacks
+    encodings_to_try = ['utf-8-sig', 'ISO-8859-15', 'Windows-1252', 'latin-1', 'utf-16', 'ISO-8859-1', 'cp1252']
+    
+    # Read larger sample for better detection
+    with open(xml_path, 'rb') as f:
+        raw_data = f.read(100000)  # Increased sample size for better detection
+        result = chardet.detect(raw_data)
+        print(f"Detected encoding: {result['encoding']} with confidence: {result['confidence']}")
+        
+    if result['encoding']:
+        encodings_to_try.insert(0, result['encoding'])
+        
+    xml_data = None
+    successful_encoding = None
+    
+    for encoding in encodings_to_try:
+        try:
+            with open(xml_path, 'r', encoding=encoding) as f:
+                xml_data = f.read()
+            print(f"Successfully read XML with encoding: {encoding}")
+            successful_encoding = encoding
+            break
+        except UnicodeDecodeError:
+            print(f"Failed decoding with {encoding}, trying next...")
+    
+    if not xml_data:
+        raise ValueError("Could not determine proper encoding for XML file")
+    
+    # Parse XML with the successful encoding
+    try:
+        doc = xmltodict.parse(xml_data)
+        diseases = []
+        # Adjust the path based on the actual structure of your XML
+        disorders = doc['JDBOR']['DisorderList']['Disorder']
+        
+        if not isinstance(disorders, list):
+            disorders = [disorders]
+        
+        for disorder in disorders:
+            try:
+                # Extract symptoms if available
+                symptoms = []
+                if 'ClinicalSignList' in disorder and disorder['ClinicalSignList'] is not None:
+                    clinical_signs = disorder['ClinicalSignList'].get('ClinicalSign', [])
+                    if not isinstance(clinical_signs, list):
+                        clinical_signs = [clinical_signs]
+                    
+                    for sign in clinical_signs:
+                        if isinstance(sign, dict) and 'Name' in sign:
+                            symptoms.append(sign['Name'].get('#text', ''))
+                
+                # Extract description if available
+                description = ""
+                if 'Definition' in disorder and disorder['Definition'] is not None:
+                    description = disorder['Definition'].get('#text', '')
+                
+                disease = {
+                    "code": disorder.get('OrphaCode', ''),
+                    "name": disorder.get('Name', {}).get('#text', ''),
+                    "symptoms": ", ".join(symptoms),
+                    "description": description
+                }
+                diseases.append(disease)
+            except Exception as e:
+                print(f"Error processing disorder: {e}")
+    except Exception as e:
+        print(f"Error parsing XML: {e}")
+        return False
     
     if not diseases:
         print("No diseases found in the XML file")

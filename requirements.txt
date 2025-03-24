@@ -1,26 +1,29 @@
-# Core AI
-langchain==0.3.21
-langchain-community==0.3.20
-pymilvus==2.5.6
+# Procesamiento XML y datos
+lxml==4.9.4
+xmltodict==0.13.0
+python-dotenv==1.0.0
 
-# Vector processing
-faiss-cpu==1.10.0
-sentence-transformers==3.4.1
+# Entorno virtual
+virtualenv==20.25.1
 
-# NLP
-transformers==4.50.0
-torch==2.6.0
-accelerate==1.5.2
+# Backend/Embeddings
+langchain==0.1.16
+faiss-cpu==1.8.0
+pymilvus==2.4.0
 
-# Data processing
-xmltodict==0.14.2
-pandas==2.2.3
+# Modelo LLM
+transformers==4.40.0
+torch==2.2.1
+accelerate==0.29.3
 
-# UI
-streamlit==1.43.2
+# Frontend
+streamlit==1.33.0
 
 # Backend
 fastapi==0.115.11
 uvicorn==0.34.0
-python-dotenv==1.0.1
 requests==2.32.3
+
+# Adicionales
+sentence-transformers==3.4.1
+pandas==2.2.3

@@ -3,8 +3,12 @@ import subprocess
 import time
 import sys
 import webbrowser
-import requests  # Add this import
+import requests
 from dotenv import load_dotenv
+import threading
+
+# Cargar variables de entorno
+load_dotenv()
 
 load_dotenv()
 
