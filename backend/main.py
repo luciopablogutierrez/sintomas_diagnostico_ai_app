@@ -136,11 +136,23 @@ def initialize_components():
         embedding_model = SentenceTransformer('all-MiniLM-L6-v2')
         
         print("Initializing language model...")
+        from langchain.llms import HuggingFaceHub
         llm = HuggingFaceHub(
             repo_id="deepseek-ai/DeepSeek-R1",
             model_kwargs={"temperature": 0.5, "max_length": 512},
             huggingfacehub_api_token=os.getenv("HUGGINGFACE_API_TOKEN")
         )
+        
+        # Inicializar componentes RAG
+        from rag.pipeline import setup_rag
+        global embeddings, vector_db
+        try:
+            print("Inicializando componentes RAG...")
+            _, embeddings, vector_db = setup_rag()
+            print("Componentes RAG inicializados correctamente")
+        except Exception as e:
+            print(f"Error al inicializar componentes RAG: {e}")
+            # No lanzar excepción, solo registrar el error
         
         initialization_complete = True
         print("All components initialized successfully")
@@ -158,8 +170,14 @@ class ChatRequest(BaseModel):
     symptoms: str
 
 # Importar módulos necesarios para el pipeline RAG
-from backend.rag.pipeline import generate_diagnosis, search_similar_diseases
+from rag.pipeline import generate_diagnosis, search_similar_diseases, setup_rag
+from milvus.connection import get_collection, connect_to_milvus
 import time
+
+# Inicializar variables globales para el pipeline RAG
+embeddings = None
+vector_db = None
+query_stats = {"total_queries": 0, "query_history": [], "avg_response_time": 0}
 
 @app.post("/diagnose")
 async def diagnose(request: ChatRequest):
@@ -173,9 +191,34 @@ async def diagnose(request: ChatRequest):
     start_time = time.time()
     
     try:
-        # Importar módulos de RAG
-        from backend.rag.pipeline import setup_rag
-        from backend.milvus.connection import get_collection
+        global llm, embeddings, vector_db
+        
+        # Inicializar componentes RAG si aún no están inicializados
+        if llm is None or embeddings is None or vector_db is None:
+            logger.info("Inicializando componentes RAG...")
+            try:
+                # Verificar conexión a Milvus
+                if not connect_to_milvus():
+                    logger.error("No se pudo conectar a Milvus")
+                    raise HTTPException(status_code=500, detail="Error de conexión a Milvus")
+                
+                # Configurar pipeline RAG
+                llm_rag, embeddings_rag, vector_db_rag = setup_rag()
+                
+                # Usar el LLM existente si ya está inicializado
+                if llm is None and llm_rag is not None:
+                    llm = llm_rag
+                
+                # Actualizar variables globales
+                if embeddings is None:
+                    embeddings = embeddings_rag
+                if vector_db is None:
+                    vector_db = vector_db_rag
+                    
+                logger.info("Componentes RAG inicializados correctamente")
+            except Exception as e:
+                logger.error(f"Error al inicializar componentes RAG: {e}")
+                raise HTTPException(status_code=500, detail=f"Error al inicializar componentes RAG: {str(e)}")
         
         # Verificar componentes
         if llm is None or embeddings is None or vector_db is None:
