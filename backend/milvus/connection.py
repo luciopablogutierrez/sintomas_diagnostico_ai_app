@@ -7,20 +7,35 @@ load_dotenv()
 def connect_to_milvus():
     """
     Establece conexión con el servidor Milvus y verifica su disponibilidad.
+    Intenta conectar con puertos alternativos si el principal falla.
     
     Returns:
         bool: True si la conexión fue exitosa, False en caso contrario
     """
     try:
         print("Conectando a Milvus...")
-        connections.connect(
-            alias="default",
-            host=os.getenv("MILVUS_HOST", "localhost"),
-            port=os.getenv("MILVUS_PORT", "19530"),
-            timeout=10.0,
-            keepalive_time=30,
-            keepalive=True
-        )
+        
+        # Obtener puertos alternativos
+        alternate_ports = os.getenv("MILVUS_ALTERNATE_PORTS", "").split(",")
+        ports = [os.getenv("MILVUS_PORT", "19530")] + alternate_ports
+        
+        # Intentar conectar con cada puerto
+        for port in ports:
+            try:
+                print(f"Intentando conectar al puerto {port}...")
+                connections.connect(
+                    alias="default",
+                    host=os.getenv("MILVUS_HOST", "localhost"),
+                    port=port,
+                    timeout=10.0,
+                    keepalive_time=30,
+                    keepalive=True
+                )
+                break
+            except Exception as e:
+                print(f"Error al conectar al puerto {port}: {e}")
+                if port == ports[-1]:
+                    raise e
         
         # Verificar conexión listando colecciones
         collections = utility.list_collections()

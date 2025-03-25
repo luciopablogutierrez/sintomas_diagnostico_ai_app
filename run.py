@@ -1,3 +1,16 @@
+"""
+Main Application Runner
+
+This script handles the complete setup and execution of the medical diagnosis AI application.
+It manages system checks, environment setup, Milvus database initialization, and application startup.
+
+Key Responsibilities:
+- System dependency verification (Python, Docker)
+- Virtual environment setup and dependency installation
+- Milvus database management
+- Application startup and monitoring
+"""
+
 import os
 import subprocess
 import time

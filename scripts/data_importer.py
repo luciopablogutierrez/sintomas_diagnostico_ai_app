@@ -1,3 +1,17 @@
+"""
+Data Importer Module
+
+This module handles the import and processing of medical data from ORPHA nomenclature XML files.
+It supports both Milvus vector database storage and local JSON fallback storage.
+
+Key Features:
+- Automated dependency installation
+- XML file download and processing
+- Data import to Milvus vector database
+- Local JSON fallback storage
+- Sample data generation for testing
+"""
+
 import os
 import sys
 import subprocess
