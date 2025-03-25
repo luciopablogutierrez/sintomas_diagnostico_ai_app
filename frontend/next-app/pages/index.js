@@ -69,3 +69,16 @@ export default function Home() {
     } finally {
       setIsLoading(false);
     }
+  }
+
+  return (
+    <>
+      <Head>
+        <title>Asistente de Diagnóstico</title>
+      </Head>
+      <main>
+        {/* Existing UI code */}
+      </main>
+    </>
+  );
+}
