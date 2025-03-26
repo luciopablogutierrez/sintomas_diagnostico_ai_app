@@ -76,7 +76,7 @@ with st.sidebar:
     st.metric("Tiempo promedio de respuesta", f"{stats.get('avg_response_time', 0):.2f} seg")
 
 # Pestañas principales
-tab1, tab2, tab3 = st.tabs(["Base de Datos", "Estadísticas", "Configuración"])
+tab1, tab2, tab3, tab4 = st.tabs(["Base de Datos", "Estadísticas", "Configuración", "Gestión de Médicos"])
 
 # Pestaña de Base de Datos
 with tab1:
@@ -158,4 +158,81 @@ with tab3:
 
 # Pie de página
 st.markdown("---")
+# Pestaña de Gestión de Médicos
+with tab4:
+    st.header("Gestión de Médicos")
+    
+    # Formulario para crear/editar médico
+    with st.form("doctor_form"):
+        st.subheader("Datos del Médico")
+        
+        username = st.text_input("Usuario")
+        password = st.text_input("Contraseña", type="password")
+        full_name = st.text_input("Nombre Completo")
+        email = st.text_input("Email")
+        specialty = st.text_input("Especialidad")
+        license_number = st.text_input("Número de Licencia")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            submit = st.form_submit_button("Guardar")
+        
+        if submit and username and password and full_name and email:
+            try:
+                response = requests.post(
+                    f"{os.getenv('BACKEND_URL', 'http://localhost:8000')}/doctors",
+                    json={
+                        "username": username,
+                        "password": password,
+                        "full_name": full_name,
+                        "email": email,
+                        "specialty": specialty,
+                        "license_number": license_number
+                    }
+                )
+                if response.status_code == 200:
+                    st.success("Médico registrado correctamente")
+                else:
+                    st.error(f"Error al registrar médico: {response.text}")
+            except Exception as e:
+                st.error(f"Error de conexión: {str(e)}")
+    
+    # Lista de médicos
+    st.subheader("Lista de Médicos")
+    try:
+        response = requests.get(f"{os.getenv('BACKEND_URL', 'http://localhost:8000')}/doctors")
+        if response.status_code == 200:
+            doctors = response.json()
+            if doctors:
+                df = pd.DataFrame(doctors)
+                df = df.drop(columns=['hashed_password'], errors='ignore')
+                
+                # Agregar columnas de acciones
+                for index, row in df.iterrows():
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if st.button(f"Editar {row['username']}"):
+                            st.session_state.editing_doctor = row
+                    with col2:
+                        if st.button(f"Eliminar {row['username']}"):
+                            try:
+                                delete_response = requests.delete(
+                                    f"{os.getenv('BACKEND_URL', 'http://localhost:8000')}/doctors/{row['id']}"
+                                )
+                                if delete_response.status_code == 200:
+                                    st.success(f"Médico {row['username']} eliminado correctamente")
+                                    st.experimental_rerun()
+                                else:
+                                    st.error(f"Error al eliminar médico: {delete_response.text}")
+                            except Exception as e:
+                                st.error(f"Error de conexión: {str(e)}")
+                
+                st.dataframe(df)
+            else:
+                st.info("No hay médicos registrados")
+        else:
+            st.error("Error al obtener la lista de médicos")
+    except Exception as e:
+        st.error(f"Error de conexión: {str(e)}")
+
 st.markdown("MediChat Admin Panel - Desarrollado con Streamlit")

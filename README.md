@@ -6,10 +6,11 @@ Crear una aplicación de chat intuitiva para doctores que ingrese síntomas y pr
 
 ## Stack Tecnológico Específico
 ```
-Frontend: Next.js + Streamlit (UI)
+Frontend: Streamlit (UI para chat médico y panel de administración)
 Embeddings: FAISS (índices eficientes)
 Backend/Model: LangChain (orquestación)
-Vector DB: Milvus (almacenamiento/retrieval)
+Vector DB: Milvus (almacenamiento/retrieval de datos médicos)
+Document DB: MongoDB (gestión de usuarios médicos)
 LLM: deepseek-ai/DeepSeek-R1 (HuggingFace)
 ```
 
@@ -56,7 +57,7 @@ sintomas_diagnostico_ai_app/
 ├── .env                      # Variables de entorno
 ├── .env.example             # Ejemplo de variables de entorno
 ├── requirements.txt         # Dependencias de Python
-├── docker-compose.yml       # Configuración de Docker para Milvus
+├── docker-compose.yml       # Configuración de Docker para Milvus y MongoDB
 ├── run.py                   # Script para ejecutar la aplicación
 ├── README.md                # Este archivo
 ├── ORPHAnomenclature_es_2024.xml  # Datos de enfermedades raras
@@ -65,18 +66,24 @@ sintomas_diagnostico_ai_app/
 ├── backend/
 │   ├── etl/                 # Scripts ETL
 │   │   └── xml_to_milvus.py # Procesamiento de XML a Milvus
-│   ├── milvus/              # Conexión a la base de datos
+│   ├── milvus/              # Conexión a la base de datos vectorial
 │   │   └── connection.py    # Configuración de conexión a Milvus
+│   ├── mongodb/             # Conexión a MongoDB
+│   │   └── connection.py    # Configuración de conexión a MongoDB
+│   ├── models/              # Modelos de datos
+│   │   └── doctors.py       # Modelo para gestión de médicos
+│   ├── services/            # Servicios de la aplicación
+│   │   └── doctors.py       # Servicio para gestión de médicos
 │   ├── rag/                 # Pipeline RAG
 │   │   └── pipeline.py      # Configuración del pipeline RAG
 │   ├── main.py              # API FastAPI para el backend
 │   └── requirements.txt     # Dependencias específicas del backend
 └── frontend/
-    ├── app.py               # Interfaz principal
-    ├── next-app/            # Aplicación Next.js
-    │   └── pages/           # Páginas de la aplicación Next.js
+    ├── app.py               # Interfaz principal de chat médico
+    ├── chat-app/            # Aplicación de chat para diagnóstico
+    │   └── app.py           # Interfaz de chat Streamlit
     └── streamlit-admin/     # Interfaz de administración
-        └── app.py           # Aplicación Streamlit para administración
+        └── app.py           # Panel de administración Streamlit
 ```
 
 ## Flujo de Procesamiento
@@ -89,6 +96,11 @@ sintomas_diagnostico_ai_app/
    - Input de síntomas → Embedding → Búsqueda por similitud (FAISS)
    - Top 5 resultados → Prompt engineering → DeepSeek-R1
    - Formateo de respuesta (Markdown + evidencias)
+
+3. **Gestión de Médicos**:
+   - Registro de médicos → Validación de datos → Hash de contraseña (bcrypt)
+   - Almacenamiento en MongoDB → Autenticación para acceso al sistema
+   - Panel de administración para gestión de usuarios médicos
 
 ## Uso
 
@@ -113,7 +125,7 @@ sintomas_diagnostico_ai_app/
 
 ## Tecnologías utilizadas
 
-- **Frontend**: Next.js, Streamlit
+- **Frontend**: Streamlit
 - **Backend**: FastAPI, LangChain
 - **Base de datos vectorial**: Milvus
 - **Embeddings y RAG**: FAISS

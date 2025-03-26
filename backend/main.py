@@ -7,6 +7,7 @@ import time
 import logging
 import sys
 from dotenv import load_dotenv
+from routes.doctors import router as doctors_router
 
 # Configurar logging
 logging.basicConfig(
@@ -23,6 +24,9 @@ load_dotenv()
 
 app = FastAPI()
 
+# Include routers
+app.include_router(doctors_router, prefix="/doctors", tags=["doctors"])
+
 # Initialize global variables
 embedding_model = None
 collection = None
@@ -33,7 +37,8 @@ initialization_error = None
 # Add a health check endpoint
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "initialization": "complete" if initialization_complete else "in_progress"}
+    # Respuesta inmediata sin verificar el estado de inicialización
+    return {"status": "ok"}
 
 # Add a status endpoint to check component initialization
 @app.get("/status")
