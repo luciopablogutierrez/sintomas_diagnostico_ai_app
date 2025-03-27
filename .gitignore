@@ -12,6 +12,10 @@ ENV/
 env.bak/
 venv.bak/
 .python-version
+pip-log.txt
+pip-delete-this-directory.txt
+*.pkl
+*.pickle
 
 # IDE
 .idea/
@@ -34,6 +38,10 @@ log/
 node_modules/
 dist/
 build/
+.next/
+.nuxt/
+.output/
+.vercel/
 
 # Milvus data
 volumes/milvus/
@@ -43,11 +51,22 @@ volumes/minio/
 # MongoDB data
 volumes/mongodb/
 
+# XML data files (pueden ser muy grandes)
+*.xml
+
 # Cache
 .cache/
 .pytest_cache/
 .coverage
 htmlcov/
+.ruff_cache/
+__pypackages__/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Streamlit
+.streamlit/
 
 # Distribution
 *.egg-info/
@@ -66,3 +85,14 @@ lib64/
 # Misc
 .DS_Store
 Thumbs.db
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
