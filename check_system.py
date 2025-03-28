@@ -217,7 +217,6 @@ def check_docker_status():
         return False, {"error": f"Error al ejecutar comando Docker: {str(e)}"}
     except Exception as e:
         return False, {"error": f"Error inesperado: {str(e)}"}
-variables de entorno, archivo xml, importar xml, db mongo, conexion milvus, 
 def check_mongodb_connection(retry=False):
     """Verificar conexión con la base de datos MongoDB.
     
